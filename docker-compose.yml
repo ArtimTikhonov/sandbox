@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api-gateway
+      args:
+        REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - sandbox-network
+    depends_on:
+      - service-one
+      - service-two
+
+  service-one:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service-one
+      args:
+        REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
+    container_name: service-one
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - sandbox-network
+
+  service-two:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service-two
+      args:
+        REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
+    container_name: service-two
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - sandbox-network
+    depends_on:
+      - service-one
+
+networks:
+  sandbox-network:
+    driver: bridge
