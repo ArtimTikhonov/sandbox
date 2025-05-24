@@ -27,6 +27,17 @@ services:
     networks:
       - sandbox-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - sandbox-network
+
   api-gateway:
     build:
       context: .
@@ -60,17 +71,21 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      # Добавляем переменные для PostgreSQL
+      # PostgreSQL переменные
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=sandbox
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgres
+      # Redis переменные
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     networks:
       - sandbox-network
     depends_on:
       - kafka
-      - postgres  # Добавляем зависимость от postgres
+      - postgres
+      - redis
 
   service-two:
     build:
@@ -90,6 +105,7 @@ services:
     depends_on:
       - service-one
       - kafka
+
   postgres:
     image: postgres:16
     container_name: postgres
@@ -103,8 +119,11 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - sandbox-network
+
 networks:
   sandbox-network:
     driver: bridge
+
 volumes:
   postgres-data:
+  redis-data:

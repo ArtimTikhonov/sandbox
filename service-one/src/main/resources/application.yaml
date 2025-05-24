@@ -27,3 +27,17 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+
+    # Настройки Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
