@@ -60,10 +60,17 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # Добавляем переменные для PostgreSQL
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=sandbox
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
     networks:
       - sandbox-network
     depends_on:
       - kafka
+      - postgres  # Добавляем зависимость от postgres
 
   service-two:
     build:
@@ -83,7 +90,21 @@ services:
     depends_on:
       - service-one
       - kafka
-
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sandbox
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - sandbox-network
 networks:
   sandbox-network:
     driver: bridge
+volumes:
+  postgres-data:
