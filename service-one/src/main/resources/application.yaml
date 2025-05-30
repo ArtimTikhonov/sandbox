@@ -28,7 +28,7 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-    # Настройки Redis
+  # Настройки Redis
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -41,3 +41,36 @@ spring:
           max-wait: -1ms
           max-idle: 8
           min-idle: 0
+
+# Настройки Actuator и Prometheus
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"  # Включаем все эндпоинты для мониторинга
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      sla:
+        http.server.requests: 100ms,200ms,300ms,500ms,1s,2s,5s
+    tags:
+      application: ${spring.application.name}
+    web:
+      server:
+        request:
+          autotime:
+            enabled: true
+            percentiles: 0.5,0.75,0.95,0.99
+            percentiles-histogram: true
