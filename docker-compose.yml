@@ -1,192 +1,288 @@
-version: '3.8'
+# =============================================================================
+# DOCKER COMPOSE КОНФИГУРАЦИЯ ДЛЯ МИКРОСЕРВИСНОЙ ЭКОСИСТЕМЫ
+# =============================================================================
+# Этот файл определяет всю инфраструктуру проекта:
+# - 3 микросервиса (API Gateway + 2 бизнес-сервиса)
+# - База данных PostgreSQL
+# - Кеш Redis  
+# - Брокер сообщений Kafka + Zookeeper
+# - Мониторинг Prometheus + Grafana
+# - Веб-интерфейс для Kafka
 
+version: '3.8'  # Версия формата docker-compose
+
+# =============================================================================
+# СЕКЦИЯ СЕРВИСОВ
+# =============================================================================
 services:
+
+  # ---------------------------------------------------------------------------
+  # ZOOKEEPER - КООРДИНАТОР ДЛЯ KAFKA
+  # ---------------------------------------------------------------------------
+  # Kafka требует Zookeeper для координации кластера и хранения метаданных
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0
-    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.3.0  # Стабильная версия от Confluent
+    container_name: zookeeper               # Имя контейнера
     environment:
+      # Порт для клиентских подключений
       ZOOKEEPER_CLIENT_PORT: 2181
+      # Базовая единица времени для heartbeat (в миллисекундах)  
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - sandbox-network
+      - sandbox-network  # Подключаем к нашей внутренней сети
 
+  # ---------------------------------------------------------------------------
+  # KAFKA - БРОКЕР СООБЩЕНИЙ
+  # ---------------------------------------------------------------------------
+  # Apache Kafka для асинхронного обмена сообщениями между сервисами
   kafka:
     image: confluentinc/cp-kafka:7.3.0
     container_name: kafka
     depends_on:
-      - zookeeper
+      - zookeeper  # Kafka запустится только после Zookeeper
     ports:
-      - "9092:9092"
-      - "9093:9093"  # Добавляем дополнительный порт для внешних подключений
+      - "9092:9092"  # Порт для внутренних подключений (из других контейнеров)
+      - "9093:9093"  # Порт для внешних подключений (с хост-машины)
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 1  # Уникальный ID брокера в кластере
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Подключение к Zookeeper
+      
+      # Настройка протоколов безопасности для разных типов подключений
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      
+      # Адреса, которые Kafka сообщает клиентам для подключения
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
+      
+      # Адреса, на которых Kafka слушает подключения
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      
+      # Listener для внутреннего общения между брокерами
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      
+      # Настройки репликации для стабильности (для одного брокера = 1)
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     networks:
       - sandbox-network
 
-  # Добавленный Kafka UI
+  # ---------------------------------------------------------------------------
+  # KAFKA UI - ВЕБ-ИНТЕРФЕЙС ДЛЯ УПРАВЛЕНИЯ KAFKA
+  # ---------------------------------------------------------------------------
+  # Удобный веб-интерфейс для просмотра топиков, сообщений и мониторинга
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     depends_on:
-      - kafka
+      - kafka  # Запускается после Kafka
     ports:
-      - "8090:8080"  # Веб-интерфейс будет доступен на порту 8090
+      - "8090:8080"  # Веб-интерфейс доступен на localhost:8090
     environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      # Настройка подключения к Kafka кластеру
+      KAFKA_CLUSTERS_0_NAME: local  # Имя кластера в UI
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # Адрес Kafka брокера
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181     # Адрес Zookeeper
+      
       # Дополнительные настройки
-      DYNAMIC_CONFIG_ENABLED: 'true'
-      KAFKA_CLUSTERS_0_READONLY: 'false'
+      DYNAMIC_CONFIG_ENABLED: 'true'   # Позволяет изменять конфигурацию через UI
+      KAFKA_CLUSTERS_0_READONLY: 'false'  # Разрешает создание/удаление топиков
     networks:
       - sandbox-network
-    restart: unless-stopped
+    restart: unless-stopped  # Автоматический перезапуск при падении
 
+  # ---------------------------------------------------------------------------
+  # REDIS - КЕШ И ХРАНИЛИЩЕ СЕССИЙ
+  # ---------------------------------------------------------------------------
+  # In-memory база данных для кеширования и быстрого доступа к данным
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine  # Лёгкая Alpine версия Redis 7
     container_name: redis
     ports:
-      - "6379:6379"
+      - "6379:6379"  # Стандартный порт Redis
+    # Запускаем Redis с включённой персистентностью (сохранение на диск)
     command: redis-server --appendonly yes
     volumes:
-      - redis-data:/data
+      - redis-data:/data  # Монтируем volume для сохранения данных
     networks:
       - sandbox-network
 
+  # ---------------------------------------------------------------------------
+  # POSTGRESQL - ОСНОВНАЯ РЕЛЯЦИОННАЯ БД
+  # ---------------------------------------------------------------------------
+  # Производственная база данных для хранения бизнес-данных
   postgres:
-    image: postgres:16
+    image: postgres:16  # Последняя стабильная версия PostgreSQL
     container_name: postgres
     ports:
-      - "5432:5432"
+      - "5432:5432"  # Стандартный порт PostgreSQL
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: sandbox
+      # Настройки базы данных (в продакшене используйте переменные окружения!)
+      POSTGRES_USER: postgres      # Пользователь БД
+      POSTGRES_PASSWORD: postgres  # Пароль (ВНИМАНИЕ: небезопасно для продакшена!)
+      POSTGRES_DB: sandbox        # Имя создаваемой БД
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data  # Персистентное хранилище данных
     networks:
       - sandbox-network
 
-  # Prometheus для сбора метрик
+  # ---------------------------------------------------------------------------
+  # PROMETHEUS - СБОР И ХРАНЕНИЕ МЕТРИК
+  # ---------------------------------------------------------------------------
+  # Time-series база данных для хранения метрик приложений
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     ports:
-      - "9090:9090"
+      - "9090:9090"  # Веб-интерфейс Prometheus
     volumes:
+      # Монтируем конфигурацию и данные
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      # Параметры запуска Prometheus
+      - '--config.file=/etc/prometheus/prometheus.yml'    # Путь к конфигу
+      - '--storage.tsdb.path=/prometheus'                 # Путь к данным
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=200h'             # Хранить данные 200 часов
+      - '--web.enable-lifecycle'                          # API для перезагрузки конфига
     networks:
       - sandbox-network
 
-  # Grafana для визуализации метрик
+  # ---------------------------------------------------------------------------
+  # GRAFANA - ВИЗУАЛИЗАЦИЯ МЕТРИК И ДАШБОРДЫ
+  # ---------------------------------------------------------------------------
+  # Инструмент для создания красивых дашбордов и графиков
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "3000:3000"  # Веб-интерфейс Grafana
     environment:
+      # Настройки администратора (измените в продакшене!)
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_SIGN_UP=false  # Запрещаем регистрацию новых пользователей
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      # Монтируем конфигурации и дашборды
+      - grafana-data:/var/lib/grafana                              # Данные Grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning  # Автоконфиг
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards  # Готовые дашборды
     networks:
       - sandbox-network
     depends_on:
-      - prometheus
+      - prometheus  # Grafana нужен Prometheus как источник данных
 
+  # ---------------------------------------------------------------------------
+  # API GATEWAY - ЕДИНАЯ ТОЧКА ВХОДА
+  # ---------------------------------------------------------------------------
+  # Маршрутизирует запросы к нужным микросервисам
   api-gateway:
     build:
-      context: .
-      dockerfile: Dockerfile
-      target: api-gateway
+      context: .                    # Собираем из текущей директории
+      dockerfile: Dockerfile        # Используем наш Dockerfile
+      target: api-gateway          # Собираем конкретный target из мультистейдж
       args:
+        # Передаём аргумент для принудительной пересборки
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: api-gateway
     ports:
-      - "8000:8000"
+      - "8000:8000"  # Главный порт для внешних запросов
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED=false
+      - SPRING_PROFILES_ACTIVE=docker  # Активируем Docker профиль
+      - SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED=false  # Отключаем проверки совместимости
     networks:
       - sandbox-network
     depends_on:
+      # API Gateway запускается после готовности бэкенд-сервисов
       - service-one
       - service-two
       - kafka
 
+  # ---------------------------------------------------------------------------
+  # SERVICE-ONE - ОСНОВНОЙ БИЗНЕС-СЕРВИС
+  # ---------------------------------------------------------------------------
+  # Главный сервис с базой данных, кешем и отправкой сообщений
   service-one:
     build:
       context: .
       dockerfile: Dockerfile
-      target: service-one
+      target: service-one  # Собираем service-one target
       args:
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: service-one
     ports:
-      - "8080:8080"
+      - "8080:8080"  # REST API сервиса
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      # PostgreSQL переменные
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=sandbox
+      - SPRING_PROFILES_ACTIVE=docker  # Профиль для контейнерного окружения
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Адрес Kafka брокера
+      
+      # Переменные для подключения к PostgreSQL
+      - DB_HOST=postgres    # Имя контейнера с БД
+      - DB_PORT=5432       # Порт БД
+      - DB_NAME=sandbox    # Имя базы данных
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgres
-      # Redis переменные
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      
+      # Переменные для подключения к Redis
+      - REDIS_HOST=redis   # Имя контейнера с Redis
+      - REDIS_PORT=6379    # Порт Redis
     networks:
       - sandbox-network
     depends_on:
-      - kafka
-      - postgres
-      - redis
+      # Service-one зависит от инфраструктурных сервисов
+      - kafka      # Для отправки сообщений
+      - postgres   # Для хранения данных
+      - redis      # Для кеширования
 
+  # ---------------------------------------------------------------------------
+  # SERVICE-TWO - СЕРВИС-ПОТРЕБИТЕЛЬ СООБЩЕНИЙ
+  # ---------------------------------------------------------------------------
+  # Обрабатывает сообщения из Kafka очереди
   service-two:
     build:
       context: .
       dockerfile: Dockerfile
-      target: service-two
+      target: service-two  # Собираем service-two target
       args:
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: service-two
     ports:
-      - "8081:8081"
+      - "8081:8081"  # REST API сервиса
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Подключение к Kafka
     networks:
       - sandbox-network
     depends_on:
-      - service-one
-      - kafka
+      - service-one  # Запускается после service-one
+      - kafka        # Нужен для получения сообщений
 
+# =============================================================================
+# СЕКЦИЯ СЕТЕЙ
+# =============================================================================
+# Создаём изолированную сеть для всех наших сервисов
 networks:
   sandbox-network:
-    driver: bridge
+    driver: bridge  # Стандартный bridge драйвер для локальной сети
 
+# =============================================================================
+# СЕКЦИЯ VOLUMES (ПОСТОЯННОЕ ХРАНИЛИЩЕ)
+# =============================================================================
+# Именованные volumes для сохранения данных между перезапусками контейнеров
 volumes:
-  postgres-data:
-  redis-data:
-  prometheus-data:
-  grafana-data:
+  postgres-data:   # Данные PostgreSQL (таблицы, индексы)
+  redis-data:      # Данные Redis (кеш, сессии)  
+  prometheus-data: # Метрики Prometheus (time-series данные)
+  grafana-data:    # Конфигурация и дашборды Grafana
+
+# =============================================================================
+# КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ:
+# =============================================================================
+# docker-compose up -d              # Запустить всю инфраструктуру в фоне
+# docker-compose down               # Остановить все сервисы
+# docker-compose down -v            # Остановить + удалить volumes (ПОТЕРЯ ДАННЫХ!)
+# docker-compose logs -f [service]  # Посмотреть логи конкретного сервиса
+# docker-compose ps                 # Статус всех сервисов
+# docker-compose restart [service]  # Перезапустить конкретный сервис
+# docker-compose build --no-cache   # Пересобрать образы без кеша
