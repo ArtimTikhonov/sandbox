@@ -1,0 +1,413 @@
+/* Service Two Styles */
+.service-two {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.service-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.service-header h1 {
+    margin: 0 0 0.5rem 0;
+    color: #9b59b6;
+    font-size: 2.5rem;
+}
+
+.service-header p {
+    color: #7f8c8d;
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.service-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.service-section {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Service Status */
+.status-display {
+    padding: 0;
+}
+
+.status-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e3e8ed;
+}
+
+.status-icon {
+    font-size: 2rem;
+    margin-top: 0.25rem;
+}
+
+.status-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.status-text {
+    font-size: 1.1rem;
+    color: #2c3e50;
+}
+
+.status-response {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.status-response code {
+    background: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #e3e8ed;
+    font-family: 'Courier New', monospace;
+    margin-left: 0.5rem;
+}
+
+.status-time {
+    color: #95a5a6;
+    font-size: 0.8rem;
+}
+
+/* Kafka Info */
+.kafka-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.kafka-config h4,
+.kafka-functionality h4 {
+    margin: 0 0 1rem 0;
+    color: #2c3e50;
+    font-size: 1rem;
+    border-bottom: 2px solid #e3e8ed;
+    padding-bottom: 0.5rem;
+}
+
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.config-item:last-child {
+    border-bottom: none;
+}
+
+.config-label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.config-value {
+    background: #ecf0f1;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #2c3e50;
+}
+
+.kafka-functionality ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.kafka-functionality li {
+    margin-bottom: 0.5rem;
+    color: #2c3e50;
+    line-height: 1.4;
+}
+
+/* Logs */
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.logs-container {
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #e3e8ed;
+    border-radius: 6px;
+    background: #fafbfc;
+}
+
+.no-logs {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #7f8c8d;
+}
+
+.no-logs p {
+    margin: 0.5rem 0;
+}
+
+.no-logs p:first-child {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.logs-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.log-item {
+    border-bottom: 1px solid #f1f3f4;
+    padding: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.log-item:last-child {
+    border-bottom: none;
+}
+
+.log-item:hover {
+    background: #f8f9fa;
+}
+
+.log-item.info {
+    border-left: 4px solid #3498db;
+}
+
+.log-item.warning {
+    border-left: 4px solid #f39c12;
+}
+
+.log-item.error {
+    border-left: 4px solid #e74c3c;
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.log-icon {
+    font-size: 1rem;
+}
+
+.log-time {
+    color: #7f8c8d;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+}
+
+.log-type {
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    margin-left: auto;
+}
+
+.log-type.info {
+    background: #e3f2fd;
+    color: #3498db;
+}
+
+.log-type.warning {
+    background: #fef9e7;
+    color: #f39c12;
+}
+
+.log-type.error {
+    background: #fdf2f2;
+    color: #e74c3c;
+}
+
+.log-message {
+    color: #2c3e50;
+    line-height: 1.4;
+    font-size: 0.9rem;
+    padding-left: 1.75rem;
+}
+
+/* API Endpoints */
+.api-endpoints {
+    margin-bottom: 1rem;
+}
+
+.endpoint {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+
+.method {
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    min-width: 60px;
+    text-align: center;
+}
+
+.method.get {
+    background: #d5f4e6;
+    color: #27ae60;
+}
+
+.path {
+    font-family: 'Courier New', monospace;
+    background: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    border: 1px solid #e3e8ed;
+    flex: 1;
+    min-width: 150px;
+}
+
+.description {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    flex: 2;
+    min-width: 150px;
+}
+
+.api-note {
+    background: #e8f5e8;
+    border: 1px solid #27ae60;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.api-note p {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* Instructions */
+.instructions {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.instruction-step {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #9b59b6;
+}
+
+.instruction-step h4 {
+    margin: 0 0 0.5rem 0;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+
+.instruction-step p {
+    margin: 0;
+    color: #2c3e50;
+    line-height: 1.4;
+    font-size: 0.9rem;
+}
+
+.instruction-step a {
+    color: #3498db;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.instruction-step a:hover {
+    text-decoration: underline;
+}
+
+.instruction-step code {
+    background: #ecf0f1;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    border: 1px solid #bdc3c7;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .service-two {
+        padding: 1rem;
+    }
+
+    .kafka-info {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .status-main {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .log-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .log-type {
+        margin-left: 0;
+    }
+
+    .log-message {
+        padding-left: 0;
+        margin-top: 0.5rem;
+    }
+
+    .endpoint {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .method {
+        align-self: flex-start;
+    }
+
+    .path, .description {
+        min-width: auto;
+        width: 100%;
+    }
+
+    .header-actions {
+        flex-direction: column;
+    }
+
+    .config-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+}

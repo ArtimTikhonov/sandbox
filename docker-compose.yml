@@ -1,10 +1,11 @@
 # =============================================================================
-# DOCKER COMPOSE КОНФИГУРАЦИЯ ДЛЯ МИКРОСЕРВИСНОЙ ЭКОСИСТЕМЫ
+# DOCKER COMPOSE КОНФИГУРАЦИЯ ДЛЯ МИКРОСЕРВИСНОЙ ЭКОСИСТЕМЫ + ФРОНТЕНД
 # =============================================================================
 # Этот файл определяет всю инфраструктуру проекта:
+# - Фронтенд React с Nginx
 # - 3 микросервиса (API Gateway + 2 бизнес-сервиса)
 # - База данных PostgreSQL
-# - Кеш Redis  
+# - Кеш Redis
 # - Брокер сообщений Kafka + Zookeeper
 # - Мониторинг Prometheus + Grafana
 # - Веб-интерфейс для Kafka
@@ -17,6 +18,26 @@ version: '3.8'  # Версия формата docker-compose
 services:
 
   # ---------------------------------------------------------------------------
+  # FRONTEND - REACT ПРИЛОЖЕНИЕ С NGINX
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .                    # Собираем из корневой директории
+      dockerfile: Dockerfile        # Используем основной Dockerfile
+      target: frontend             # Собираем конкретный target из мультистейдж
+      args:
+        # Передаём аргумент для принудительной пересборки
+        REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
+    container_name: frontend
+    ports:
+      - "3000:80"  # Фронтенд доступен на localhost:3000
+    networks:
+      - sandbox-network
+    depends_on:
+      - api-gateway  # Фронтенд запускается после готовности API Gateway
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # ZOOKEEPER - КООРДИНАТОР ДЛЯ KAFKA
   # ---------------------------------------------------------------------------
   # Kafka требует Zookeeper для координации кластера и хранения метаданных
@@ -26,7 +47,7 @@ services:
     environment:
       # Порт для клиентских подключений
       ZOOKEEPER_CLIENT_PORT: 2181
-      # Базовая единица времени для heartbeat (в миллисекундах)  
+      # Базовая единица времени для heartbeat (в миллисекундах)
       ZOOKEEPER_TICK_TIME: 2000
     networks:
       - sandbox-network  # Подключаем к нашей внутренней сети
@@ -46,19 +67,19 @@ services:
     environment:
       KAFKA_BROKER_ID: 1  # Уникальный ID брокера в кластере
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Подключение к Zookeeper
-      
+
       # Настройка протоколов безопасности для разных типов подключений
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-      
+
       # Адреса, которые Kafka сообщает клиентам для подключения
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
-      
+
       # Адреса, на которых Kafka слушает подключения
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
-      
+
       # Listener для внутреннего общения между брокерами
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      
+
       # Настройки репликации для стабильности (для одного брокера = 1)
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -82,7 +103,7 @@ services:
       KAFKA_CLUSTERS_0_NAME: local  # Имя кластера в UI
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # Адрес Kafka брокера
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181     # Адрес Zookeeper
-      
+
       # Дополнительные настройки
       DYNAMIC_CONFIG_ENABLED: 'true'   # Позволяет изменять конфигурацию через UI
       KAFKA_CLUSTERS_0_READONLY: 'false'  # Разрешает создание/удаление топиков
@@ -157,7 +178,7 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"  # Веб-интерфейс Grafana
+      - "3001:3000"  # Веб-интерфейс Grafana (изменён порт, чтобы не конфликтовать с фронтендом)
     environment:
       # Настройки администратора (измените в продакшене!)
       - GF_SECURITY_ADMIN_USER=admin
@@ -216,14 +237,14 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker  # Профиль для контейнерного окружения
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Адрес Kafka брокера
-      
+
       # Переменные для подключения к PostgreSQL
       - DB_HOST=postgres    # Имя контейнера с БД
       - DB_PORT=5432       # Порт БД
       - DB_NAME=sandbox    # Имя базы данных
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgres
-      
+
       # Переменные для подключения к Redis
       - REDIS_HOST=redis   # Имя контейнера с Redis
       - REDIS_PORT=6379    # Порт Redis
@@ -272,12 +293,12 @@ networks:
 # Именованные volumes для сохранения данных между перезапусками контейнеров
 volumes:
   postgres-data:   # Данные PostgreSQL (таблицы, индексы)
-  redis-data:      # Данные Redis (кеш, сессии)  
+  redis-data:      # Данные Redis (кеш, сессии)
   prometheus-data: # Метрики Prometheus (time-series данные)
   grafana-data:    # Конфигурация и дашборды Grafana
 
 # =============================================================================
-# КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ:
+# ОБНОВЛЁННЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ:
 # =============================================================================
 # docker-compose up -d              # Запустить всю инфраструктуру в фоне
 # docker-compose down               # Остановить все сервисы
@@ -286,3 +307,10 @@ volumes:
 # docker-compose ps                 # Статус всех сервисов
 # docker-compose restart [service]  # Перезапустить конкретный сервис
 # docker-compose build --no-cache   # Пересобрать образы без кеша
+#
+# ДОСТУПНЫЕ СЕРВИСЫ:
+# http://localhost:3000  - React фронтенд
+# http://localhost:8000  - API Gateway
+# http://localhost:3001  - Grafana (порт изменён!)
+# http://localhost:9090  - Prometheus
+# http://localhost:8090  - Kafka UI
