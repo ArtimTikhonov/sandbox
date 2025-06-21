@@ -66,7 +66,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 
 # Устанавливаем зависимости
-RUN npm ci --only=production
+RUN npm install
 
 # Копируем исходный код фронтенда
 COPY frontend/ .
