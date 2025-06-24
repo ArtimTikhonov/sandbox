@@ -1,20 +1,10 @@
 # =============================================================================
-# DOCKER COMPOSE КОНФИГУРАЦИЯ ДЛЯ МИКРОСЕРВИСНОЙ ЭКОСИСТЕМЫ + ФРОНТЕНД
+# DOCKER COMPOSE КОНФИГУРАЦИЯ ДЛЯ МИКРОСЕРВИСНОЙ ЭКОСИСТЕМЫ + ELK STACK
 # =============================================================================
-# Этот файл определяет всю инфраструктуру проекта:
-# - Фронтенд React с Nginx
-# - 3 микросервиса (API Gateway + 2 бизнес-сервиса)
-# - База данных PostgreSQL
-# - Кеш Redis
-# - Брокер сообщений Kafka + Zookeeper
-# - Мониторинг Prometheus + Grafana
-# - Веб-интерфейс для Kafka
+# Добавлены: Elasticsearch, Logstash, Kibana для централизованного логирования
 
-version: '3.8'  # Версия формата docker-compose
+version: '3.8'
 
-# =============================================================================
-# СЕКЦИЯ СЕРВИСОВ
-# =============================================================================
 services:
 
   # ---------------------------------------------------------------------------
@@ -22,65 +12,130 @@ services:
   # ---------------------------------------------------------------------------
   frontend:
     build:
-      context: .                    # Собираем из корневой директории
-      dockerfile: Dockerfile        # Используем основной Dockerfile
-      target: frontend             # Собираем конкретный target из мультистейдж
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
       args:
-        # Передаём аргумент для принудительной пересборки
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: frontend
     ports:
-      - "3000:80"  # Фронтенд доступен на localhost:3000
+      - "3000:80"
     networks:
       - sandbox-network
     depends_on:
-      - api-gateway  # Фронтенд запускается после готовности API Gateway
+      - api-gateway
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ELK STACK - ELASTICSEARCH
+  # ---------------------------------------------------------------------------
+  elasticsearch:
+    image: elasticsearch:8.8.2
+    container_name: elasticsearch
+    environment:
+      # Отключаем security для упрощения настройки (не для production!)
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"  # Ограничиваем память
+      - cluster.name=sandbox-cluster
+      - node.name=sandbox-node
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - sandbox-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ELK STACK - LOGSTASH
+  # ---------------------------------------------------------------------------
+  logstash:
+    image: logstash:8.8.2
+    container_name: logstash
+    volumes:
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "5044:5044"  # Beats input
+      - "5000:5000"  # TCP input для приложений
+      - "9600:9600"  # Logstash API
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m"
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+    networks:
+      - sandbox-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ELK STACK - KIBANA
+  # ---------------------------------------------------------------------------
+  kibana:
+    image: kibana:8.8.2
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      # Отключаем security для упрощения
+      XPACK_SECURITY_ENABLED: false
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "something_at_least_32_characters_long_for_encryption_key"
+    networks:
+      - sandbox-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # ZOOKEEPER - КООРДИНАТОР ДЛЯ KAFKA
   # ---------------------------------------------------------------------------
-  # Kafka требует Zookeeper для координации кластера и хранения метаданных
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.3.0  # Стабильная версия от Confluent
-    container_name: zookeeper               # Имя контейнера
+    image: confluentinc/cp-zookeeper:7.3.0
+    container_name: zookeeper
     environment:
-      # Порт для клиентских подключений
       ZOOKEEPER_CLIENT_PORT: 2181
-      # Базовая единица времени для heartbeat (в миллисекундах)
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - sandbox-network  # Подключаем к нашей внутренней сети
+      - sandbox-network
 
   # ---------------------------------------------------------------------------
   # KAFKA - БРОКЕР СООБЩЕНИЙ
   # ---------------------------------------------------------------------------
-  # Apache Kafka для асинхронного обмена сообщениями между сервисами
   kafka:
     image: confluentinc/cp-kafka:7.3.0
     container_name: kafka
     depends_on:
-      - zookeeper  # Kafka запустится только после Zookeeper
+      - zookeeper
     ports:
-      - "9092:9092"  # Порт для внутренних подключений (из других контейнеров)
-      - "9093:9093"  # Порт для внешних подключений (с хост-машины)
+      - "9092:9092"
+      - "9093:9093"
     environment:
-      KAFKA_BROKER_ID: 1  # Уникальный ID брокера в кластере
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Подключение к Zookeeper
-
-      # Настройка протоколов безопасности для разных типов подключений
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
-
-      # Адреса, которые Kafka сообщает клиентам для подключения
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
-
-      # Адреса, на которых Kafka слушает подключения
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
-
-      # Listener для внутреннего общения между брокерами
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-
-      # Настройки репликации для стабильности (для одного брокера = 1)
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -90,227 +145,226 @@ services:
   # ---------------------------------------------------------------------------
   # KAFKA UI - ВЕБ-ИНТЕРФЕЙС ДЛЯ УПРАВЛЕНИЯ KAFKA
   # ---------------------------------------------------------------------------
-  # Удобный веб-интерфейс для просмотра топиков, сообщений и мониторинга
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     depends_on:
-      - kafka  # Запускается после Kafka
+      - kafka
     ports:
-      - "8090:8080"  # Веб-интерфейс доступен на localhost:8090
+      - "8090:8080"
     environment:
-      # Настройка подключения к Kafka кластеру
-      KAFKA_CLUSTERS_0_NAME: local  # Имя кластера в UI
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # Адрес Kafka брокера
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181     # Адрес Zookeeper
-
-      # Дополнительные настройки
-      DYNAMIC_CONFIG_ENABLED: 'true'   # Позволяет изменять конфигурацию через UI
-      KAFKA_CLUSTERS_0_READONLY: 'false'  # Разрешает создание/удаление топиков
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      DYNAMIC_CONFIG_ENABLED: 'true'
+      KAFKA_CLUSTERS_0_READONLY: 'false'
     networks:
       - sandbox-network
-    restart: unless-stopped  # Автоматический перезапуск при падении
+    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # REDIS - КЕШ И ХРАНИЛИЩЕ СЕССИЙ
   # ---------------------------------------------------------------------------
-  # In-memory база данных для кеширования и быстрого доступа к данным
   redis:
-    image: redis:7-alpine  # Лёгкая Alpine версия Redis 7
+    image: redis:7-alpine
     container_name: redis
     ports:
-      - "6379:6379"  # Стандартный порт Redis
-    # Запускаем Redis с включённой персистентностью (сохранение на диск)
+      - "6379:6379"
     command: redis-server --appendonly yes
     volumes:
-      - redis-data:/data  # Монтируем volume для сохранения данных
+      - redis-data:/data
     networks:
       - sandbox-network
 
   # ---------------------------------------------------------------------------
   # POSTGRESQL - ОСНОВНАЯ РЕЛЯЦИОННАЯ БД
   # ---------------------------------------------------------------------------
-  # Производственная база данных для хранения бизнес-данных
   postgres:
-    image: postgres:16  # Последняя стабильная версия PostgreSQL
+    image: postgres:16
     container_name: postgres
     ports:
-      - "5432:5432"  # Стандартный порт PostgreSQL
+      - "5432:5432"
     environment:
-      # Настройки базы данных (в продакшене используйте переменные окружения!)
-      POSTGRES_USER: postgres      # Пользователь БД
-      POSTGRES_PASSWORD: postgres  # Пароль (ВНИМАНИЕ: небезопасно для продакшена!)
-      POSTGRES_DB: sandbox        # Имя создаваемой БД
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sandbox
     volumes:
-      - postgres-data:/var/lib/postgresql/data  # Персистентное хранилище данных
+      - postgres-data:/var/lib/postgresql/data
     networks:
       - sandbox-network
 
   # ---------------------------------------------------------------------------
   # PROMETHEUS - СБОР И ХРАНЕНИЕ МЕТРИК
   # ---------------------------------------------------------------------------
-  # Time-series база данных для хранения метрик приложений
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     ports:
-      - "9090:9090"  # Веб-интерфейс Prometheus
+      - "9090:9090"
     volumes:
-      # Монтируем конфигурацию и данные
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     command:
-      # Параметры запуска Prometheus
-      - '--config.file=/etc/prometheus/prometheus.yml'    # Путь к конфигу
-      - '--storage.tsdb.path=/prometheus'                 # Путь к данным
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'             # Хранить данные 200 часов
-      - '--web.enable-lifecycle'                          # API для перезагрузки конфига
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
     networks:
       - sandbox-network
 
   # ---------------------------------------------------------------------------
   # GRAFANA - ВИЗУАЛИЗАЦИЯ МЕТРИК И ДАШБОРДЫ
   # ---------------------------------------------------------------------------
-  # Инструмент для создания красивых дашбордов и графиков
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3001:3000"  # Веб-интерфейс Grafana (изменён порт, чтобы не конфликтовать с фронтендом)
+      - "3001:3000"
     environment:
-      # Настройки администратора (измените в продакшене!)
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false  # Запрещаем регистрацию новых пользователей
+      - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      # Монтируем конфигурации и дашборды
-      - grafana-data:/var/lib/grafana                              # Данные Grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning  # Автоконфиг
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards  # Готовые дашборды
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     networks:
       - sandbox-network
     depends_on:
-      - prometheus  # Grafana нужен Prometheus как источник данных
+      - prometheus
 
   # ---------------------------------------------------------------------------
   # API GATEWAY - ЕДИНАЯ ТОЧКА ВХОДА
   # ---------------------------------------------------------------------------
-  # Маршрутизирует запросы к нужным микросервисам
   api-gateway:
     build:
-      context: .                    # Собираем из текущей директории
-      dockerfile: Dockerfile        # Используем наш Dockerfile
-      target: api-gateway          # Собираем конкретный target из мультистейдж
+      context: .
+      dockerfile: Dockerfile
+      target: api-gateway
       args:
-        # Передаём аргумент для принудительной пересборки
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: api-gateway
     ports:
-      - "8000:8000"  # Главный порт для внешних запросов
+      - "8000:8000"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker  # Активируем Docker профиль
-      - SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED=false  # Отключаем проверки совместимости
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED=false
+      # ELK интеграция
+      - LOGSTASH_HOST=logstash
+      - LOGSTASH_PORT=5000
     networks:
       - sandbox-network
     depends_on:
-      # API Gateway запускается после готовности бэкенд-сервисов
       - service-one
       - service-two
       - kafka
+      - logstash
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---------------------------------------------------------------------------
   # SERVICE-ONE - ОСНОВНОЙ БИЗНЕС-СЕРВИС
   # ---------------------------------------------------------------------------
-  # Главный сервис с базой данных, кешем и отправкой сообщений
   service-one:
     build:
       context: .
       dockerfile: Dockerfile
-      target: service-one  # Собираем service-one target
+      target: service-one
       args:
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: service-one
     ports:
-      - "8080:8080"  # REST API сервиса
+      - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker  # Профиль для контейнерного окружения
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Адрес Kafka брокера
-
-      # Переменные для подключения к PostgreSQL
-      - DB_HOST=postgres    # Имя контейнера с БД
-      - DB_PORT=5432       # Порт БД
-      - DB_NAME=sandbox    # Имя базы данных
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # База данных
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=sandbox
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgres
-
-      # Переменные для подключения к Redis
-      - REDIS_HOST=redis   # Имя контейнера с Redis
-      - REDIS_PORT=6379    # Порт Redis
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # ELK интеграция
+      - LOGSTASH_HOST=logstash
+      - LOGSTASH_PORT=5000
     networks:
       - sandbox-network
     depends_on:
-      # Service-one зависит от инфраструктурных сервисов
-      - kafka      # Для отправки сообщений
-      - postgres   # Для хранения данных
-      - redis      # Для кеширования
+      - kafka
+      - postgres
+      - redis
+      - logstash
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---------------------------------------------------------------------------
   # SERVICE-TWO - СЕРВИС-ПОТРЕБИТЕЛЬ СООБЩЕНИЙ
   # ---------------------------------------------------------------------------
-  # Обрабатывает сообщения из Kafka очереди
   service-two:
     build:
       context: .
       dockerfile: Dockerfile
-      target: service-two  # Собираем service-two target
+      target: service-two
       args:
         REBUILD_DATE: ${REBUILD_DATE:-$(date +%Y%m%d%H%M%S)}
     container_name: service-two
     ports:
-      - "8081:8081"  # REST API сервиса
+      - "8081:8081"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092  # Подключение к Kafka
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # ELK интеграция
+      - LOGSTASH_HOST=logstash
+      - LOGSTASH_PORT=5000
     networks:
       - sandbox-network
     depends_on:
-      - service-one  # Запускается после service-one
-      - kafka        # Нужен для получения сообщений
+      - service-one
+      - kafka
+      - logstash
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 # =============================================================================
 # СЕКЦИЯ СЕТЕЙ
 # =============================================================================
-# Создаём изолированную сеть для всех наших сервисов
 networks:
   sandbox-network:
-    driver: bridge  # Стандартный bridge драйвер для локальной сети
+    driver: bridge
 
 # =============================================================================
 # СЕКЦИЯ VOLUMES (ПОСТОЯННОЕ ХРАНИЛИЩЕ)
 # =============================================================================
-# Именованные volumes для сохранения данных между перезапусками контейнеров
 volumes:
-  postgres-data:   # Данные PostgreSQL (таблицы, индексы)
-  redis-data:      # Данные Redis (кеш, сессии)
-  prometheus-data: # Метрики Prometheus (time-series данные)
-  grafana-data:    # Конфигурация и дашборды Grafana
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+  # ELK volumes
+  elasticsearch-data:
 
 # =============================================================================
-# ОБНОВЛЁННЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ:
+# ДОСТУПНЫЕ СЕРВИСЫ ПОСЛЕ ДОБАВЛЕНИЯ ELK:
 # =============================================================================
-# docker-compose up -d              # Запустить всю инфраструктуру в фоне
-# docker-compose down               # Остановить все сервисы
-# docker-compose down -v            # Остановить + удалить volumes (ПОТЕРЯ ДАННЫХ!)
-# docker-compose logs -f [service]  # Посмотреть логи конкретного сервиса
-# docker-compose ps                 # Статус всех сервисов
-# docker-compose restart [service]  # Перезапустить конкретный сервис
-# docker-compose build --no-cache   # Пересобрать образы без кеша
-#
-# ДОСТУПНЫЕ СЕРВИСЫ:
 # http://localhost:3000  - React фронтенд
 # http://localhost:8000  - API Gateway
-# http://localhost:3001  - Grafana (порт изменён!)
+# http://localhost:3001  - Grafana
 # http://localhost:9090  - Prometheus
 # http://localhost:8090  - Kafka UI
+# http://localhost:5601  - Kibana
+# http://localhost:9200  - Elasticsearch API
+# TCP 5000              - Logstash TCP input

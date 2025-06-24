@@ -1,13 +1,14 @@
 spring:
   application:
     name: service-one
+
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
-  # Добавляем настройки PostgreSQL
+  # Настройки PostgreSQL
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:sandbox}
     username: ${DB_USERNAME:postgres}
@@ -21,6 +22,12 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Логирование SQL для ELK
+        show_sql: false
+        format_sql: true
+        generate_statistics: true
+    # Включаем логирование SQL в отдельный логгер
+    show-sql: false
 
   # Настройки Flyway
   flyway:
@@ -42,12 +49,58 @@ spring:
           max-idle: 8
           min-idle: 0
 
+# =============================================================================
+# ELK STACK КОНФИГУРАЦИЯ
+# =============================================================================
+
+# Настройки для Logstash интеграции
+logstash:
+  host: ${LOGSTASH_HOST:localhost}
+  port: ${LOGSTASH_PORT:5000}
+
+# Настройки логирования
+logging:
+  level:
+    # Корневой уровень
+    root: INFO
+
+    # Логирование нашего приложения
+    com.example.service.one: INFO
+
+    # Spring Framework
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.springframework.kafka: INFO
+    org.springframework.data.redis: INFO
+
+    # Hibernate/JPA логирование для ELK
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+    # Kafka клиенты
+    org.apache.kafka: WARN
+
+    # Actuator
+    org.springframework.boot.actuator: WARN
+
+    # Специальные логгеры для ELK
+    METRICS: INFO
+    KAFKA_EVENTS: INFO
+    REDIS_OPERATIONS: INFO
+
+  # Паттерн для консольного вывода
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %logger{36} - %msg%n"
+
+  # Конфигурация для structured logging
+  config: classpath:logback-spring.xml
+
 # Настройки Actuator и Prometheus
 management:
   endpoints:
     web:
       exposure:
-        include: "*"  # Включаем все эндпоинты для мониторинга
+        include: "*"
       base-path: /actuator
   endpoint:
     health:
@@ -56,6 +109,9 @@ management:
       access: unrestricted
     prometheus:
       access: unrestricted
+    # Добавляем эндпоинт для логирования
+    loggers:
+      enabled: true
   metrics:
     distribution:
       percentiles-histogram:
@@ -64,7 +120,43 @@ management:
         http.server.requests: 100ms,200ms,300ms,500ms,1s,2s,5s
     tags:
       application: ${spring.application.name}
+      environment: ${SPRING_PROFILES_ACTIVE:local}
+    # Кастомные метрики для ELK интеграции
+    export:
+      elastic:
+        enabled: false  # Отключаем прямой экспорт в Elasticsearch (используем Logstash)
   prometheus:
     metrics:
       export:
         enabled: true
+
+# =============================================================================
+# ПРОФИЛИ ДЛЯ РАЗНЫХ ОКРУЖЕНИЙ
+# =============================================================================
+
+---
+# Профиль для Docker окружения
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+logging:
+  level:
+    # В Docker включаем более детальное логирование для мониторинга
+    com.example.service.one: DEBUG
+    org.springframework.kafka.listener: DEBUG
+    org.springframework.data.redis.core: DEBUG
+
+---
+# Профиль для локальной разработки
+spring:
+  config:
+    activate:
+      on-profile: local
+
+logging:
+  level:
+    # Локально включаем максимальное логирование для отладки
+    com.example.service.one: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG

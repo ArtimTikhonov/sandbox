@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
-import { serviceOneApi, serviceTwoApi, handleApiError } from '../services/api';
+import React, {useState, useEffect} from 'react';
+import {serviceOneApi, serviceTwoApi, handleApiError} from '../services/api';
 import './Dashboard.css';
 
-export interface DashboardProps {}
+export interface DashboardProps {
+}
 
 interface ServiceStatus {
     name: string;
@@ -22,9 +23,9 @@ interface SystemStats {
 
 const Dashboard: React.FC<DashboardProps> = () => {
     const [services, setServices] = useState<ServiceStatus[]>([
-        { name: 'Service One', status: 'checking' },
-        { name: 'Service Two', status: 'checking' },
-        { name: 'API Gateway', status: 'checking' },
+        {name: 'Service One', status: 'checking'},
+        {name: 'Service Two', status: 'checking'},
+        {name: 'API Gateway', status: 'checking'},
     ]);
 
     const [stats, setStats] = useState<SystemStats>({
@@ -72,7 +73,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
 
     const checkAllServices = async () => {
         // Устанавливаем статус "checking" для всех сервисов
-        setServices(prev => prev.map(service => ({ ...service, status: 'checking' as const })));
+        setServices(prev => prev.map(service => ({...service, status: 'checking' as const})));
         setLastRefresh(new Date());
 
         // Проверяем все сервисы параллельно
@@ -80,7 +81,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
             checkServiceStatus('Service One', serviceOneApi.test),
             checkServiceStatus('Service Two', serviceTwoApi.test),
             checkServiceStatus('API Gateway', () =>
-                fetch('http://localhost:8000/service-one/one/get').then(r => ({ data: r.ok ? 'OK' : 'Error' }))
+                fetch('http://localhost:8000/service-one/one/get').then(r => ({data: r.ok ? 'OK' : 'Error'}))
             ),
         ]);
     };
@@ -112,7 +113,7 @@ const Dashboard: React.FC<DashboardProps> = () => {
         const startTime = Date.now();
         const interval = setInterval(() => {
             const uptime = Math.floor((Date.now() - startTime) / 60000);
-            setStats(prev => ({ ...prev, uptime: `${uptime}m` }));
+            setStats(prev => ({...prev, uptime: `${uptime}m`}));
         }, 60000);
 
         return () => clearInterval(interval);
@@ -120,10 +121,14 @@ const Dashboard: React.FC<DashboardProps> = () => {
 
     const getStatusIcon = (status: ServiceStatus['status']) => {
         switch (status) {
-            case 'online': return '🟢';
-            case 'offline': return '🔴';
-            case 'checking': return '🟡';
-            default: return '❓';
+            case 'online':
+                return '🟢';
+            case 'offline':
+                return '🔴';
+            case 'checking':
+                return '🟡';
+            default:
+                return '❓';
         }
     };
 
@@ -170,13 +175,13 @@ const Dashboard: React.FC<DashboardProps> = () => {
                                 <span className="stat-label">Всего сервисов</span>
                             </div>
                             <div className="stat-item">
-                <span className="stat-value" style={{ color: '#27ae60' }}>
+                <span className="stat-value" style={{color: '#27ae60'}}>
                   {stats.onlineServices}
                 </span>
                                 <span className="stat-label">Онлайн</span>
                             </div>
                             <div className="stat-item">
-                <span className="stat-value" style={{ color: '#e74c3c' }}>
+                <span className="stat-value" style={{color: '#e74c3c'}}>
                   {stats.offlineServices}
                 </span>
                                 <span className="stat-label">Оффлайн</span>
@@ -212,6 +217,9 @@ const Dashboard: React.FC<DashboardProps> = () => {
                             </a>
                             <a href="http://localhost:8090" target="_blank" rel="noopener noreferrer">
                                 🔄 Kafka UI
+                            </a>
+                            <a href="http://localhost:5601" target="_blank" rel="noopener noreferrer">
+                                🔍 Kibana (ELK)
                             </a>
                             <a href="http://localhost:8080/actuator" target="_blank" rel="noopener noreferrer">
                                 ⚙️ Actuator

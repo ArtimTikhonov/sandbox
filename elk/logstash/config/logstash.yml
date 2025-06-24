@@ -1,0 +1,20 @@
+
+# =============================================================================
+# LOGSTASH ОСНОВНАЯ КОНФИГУРАЦИЯ
+# =============================================================================
+
+http.host: "0.0.0.0"
+xpack.monitoring.enabled: false
+
+# Настройки pipeline
+pipeline.id: main
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Настройки мониторинга
+monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+# Настройки логирования
+log.level: info
+path.logs: /var/log/logstash

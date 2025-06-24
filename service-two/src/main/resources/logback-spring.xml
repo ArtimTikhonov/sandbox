@@ -1,0 +1,78 @@
+spring:
+        application:
+        name: service-two
+
+        kafka:
+        bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        producer:
+        key-serializer: org.apache.kafka.common.serialization.StringSerializer
+        value-serializer: org.apache.kafka.common.serialization.StringSerializer
+        consumer:
+        group-id: service-two-group
+        auto-offset-reset: earliest
+        key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+        # =============================================================================
+        # ELK STACK КОНФИГУРАЦИЯ
+        # =============================================================================
+
+        # Настройки для Logstash интеграции
+        logstash:
+        host: ${LOGSTASH_HOST:localhost}
+        port: ${LOGSTASH_PORT:5000}
+
+        # Настройки логирования
+        logging:
+        level:
+        # Корневой уровень
+        root: INFO
+
+        # Логирование нашего приложения
+        com.example.service.two: INFO
+
+        # Kafka логирование
+        org.springframework.kafka: INFO
+        org.springframework.kafka.listener: INFO
+        org.apache.kafka: WARN
+
+        # Специальные логгеры для ELK
+        KAFKA_CONSUMER: INFO
+        MESSAGE_PROCESSING: INFO
+
+        # Паттерн для консольного вывода
+        pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %logger{36} - %msg%n"
+
+        # Конфигурация для structured logging
+        config: classpath:logback-spring.xml
+
+        # =============================================================================
+        # ПРОФИЛИ ДЛЯ РАЗНЫХ ОКРУЖЕНИЙ
+        # =============================================================================
+
+        ---
+        # Профиль для Docker окружения
+        spring:
+        config:
+        activate:
+        on-profile: docker
+
+        logging:
+        level:
+        # В Docker включаем более детальное логирование Kafka событий
+        com.example.service.two: DEBUG
+        org.springframework.kafka.listener.KafkaMessageListenerContainer: DEBUG
+
+        ---
+        # Профиль для локальной разработки
+        spring:
+        config:
+        activate:
+        on-profile: local
+
+        logging:
+        level:
+        # Локально включаем максимальное логирование для отладки
+        com.example.service.two: DEBUG
+        org.springframework.kafka: DEBUG

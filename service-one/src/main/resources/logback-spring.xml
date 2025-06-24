@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- =================================================================== -->
+    <!-- LOGBACK КОНФИГУРАЦИЯ ДЛЯ SERVICE-ONE С ELK ИНТЕГРАЦИЕЙ             -->
+    <!-- =================================================================== -->
+
+    <!-- Импортируем стандартные конфигурации Spring Boot -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Определяем переменные -->
+    <springProperty scope="context" name="springAppName" source="spring.application.name"/>
+    <springProperty scope="context" name="logstashHost" source="logstash.host" defaultValue="localhost"/>
+    <springProperty scope="context" name="logstashPort" source="logstash.port" defaultValue="5000"/>
+
+    <!-- Appender для консоли (локальная разработка) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <layout class="ch.qos.logback.classic.PatternLayout">
+            <Pattern>
+                %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %logger{36} - %msg%n
+            </Pattern>
+        </layout>
+    </appender>
+
+    <!-- Appender для отправки в Logstash -->
+    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+        <destination>${logstashHost}:${logstashPort}</destination>
+
+        <!-- Политика переподключения -->
+        <reconnectionDelay>1 second</reconnectionDelay>
+        <writeBufferSize>16384</writeBufferSize>
+        <writeTimeout>1 minute</writeTimeout>
+
+        <!-- JSON кодировщик -->
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Добавляем кастомные поля -->
+            <customFields>{"service":"service-one","version":"1.0.0"}</customFields>
+
+            <!-- Включаем контекстные данные -->
+            <includeContext>true</includeContext>
+            <includeMdc>true</includeMdc>
+
+            <!-- Поля для включения -->
+            <fieldNames>
+                <timestamp>timestamp</timestamp>
+                <message>message</message>
+                <level>level</level>
+                <thread>thread</thread>
+                <logger>logger_name</logger>
+            </fieldNames>
+        </encoder>
+
+        <!-- Фильтр для отправки только важных логов в продакшен -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <!-- Асинхронный wrapper для Logstash appender'а -->
+    <appender name="ASYNC_LOGSTASH" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="LOGSTASH"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>true</includeCallerData>
+    </appender>
+
+    <!-- Профиль для локальной разработки -->
+    <springProfile name="!docker">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Детальное логирование для разработки -->
+        <logger name="com.example.service.one" level="DEBUG"/>
+        <logger name="org.springframework.web" level="DEBUG"/>
+    </springProfile>
+
+    <!-- Профиль для Docker окружения -->
+    <springProfile name="docker">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_LOGSTASH"/>
+        </root>
+
+        <!-- Настройки логирования для продакшена -->
+        <logger name="com.example.service.one" level="INFO"/>
+        <logger name="org.springframework.kafka" level="INFO"/>
+        <logger name="org.springframework.data.redis" level="INFO"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+
+        <!-- Отключаем лишний шум -->
+        <logger name="org.apache.kafka" level="WARN"/>
+        <logger name="org.springframework.boot.actuate" level="WARN"/>
+    </springProfile>
+
+    <!-- Специальные логгеры для метрик и событий -->
+    <logger name="METRICS" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_LOGSTASH"/>
+    </logger>
+
+    <logger name="KAFKA_EVENTS" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_LOGSTASH"/>
+    </logger>
+
+    <logger name="REDIS_OPERATIONS" level="INFO" additivity="false">
+        <appender-ref ref="ASYNC_LOGSTASH"/>
+    </logger>
+</configuration>
